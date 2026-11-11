@@ -1,0 +1,88 @@
+[
+  {
+    "id": "WORK-377",
+    "type": "feature",
+    "status": "rejected",
+    "title": "Allow 1:1 meetings in Tempelhof room",
+    "description": "Sales wants to book the big room A2-10 (Tempelhof) for 1:1 customer calls because of the good video equipment. Currently rejected with ROOM-422-BIG-ROOM.",
+    "resolution": "Rejected by facility management. The big room policy (12+ seats need at least 4 attendees) stays. Use A1-01 (Spree) which also has video.",
+    "assignee": null,
+    "component": "booking-rules"
+  },
+  {
+    "id": "WORK-389",
+    "type": "bug",
+    "status": "done",
+    "title": "Bookings between 07:00 and 08:00 rejected after DST switch",
+    "description": "Since the switch to daylight saving time, bookings starting between 07:00 and 08:00 local time fail with ROOM-422-HOURS.",
+    "resolution": "Business hours are now checked in the office timezone instead of UTC (ADR-0004). Fixed in 2.1.0.",
+    "assignee": "dana",
+    "component": "booking-rules"
+  },
+  {
+    "id": "WORK-398",
+    "type": "bug",
+    "status": "in progress",
+    "title": "Bookings released although people are in the room",
+    "description": "In room B2-14 (Wannsee) bookings are released after 10 minutes although the meeting takes place. The door display of the room is offline, so nobody can check in.",
+    "workaround": "Check in via Slack with '/room checkin <booking id>'.",
+    "assignee": "facility-team",
+    "component": "check-in"
+  },
+  {
+    "id": "WORK-405",
+    "type": "bug",
+    "status": "done",
+    "title": "Users receive two release emails",
+    "description": "After the scaling of the API to 3 replicas users get every 'booking released' email twice.",
+    "resolution": "ROOMIE_RUN_SCHEDULER=1 was set on two replicas. Fixed in the deployment config, runbook updated.",
+    "assignee": "dana",
+    "component": "scheduler"
+  },
+  {
+    "id": "WORK-412",
+    "type": "bug",
+    "status": "open",
+    "title": "500 Internal Server Error when creating a booking without timezone",
+    "description": "POST /api/v2/bookings answers with 500 instead of 422 if start/end are sent without timezone offset, e.g. '2026-03-03T10:00:00'. Comparing the naive datetime with the timezone-aware 'now' raises a TypeError. Reported by the mobile app team.",
+    "workaround": "Always send timestamps with offset (e.g. '+01:00') or 'Z'.",
+    "assignee": null,
+    "component": "api"
+  },
+  {
+    "id": "WORK-415",
+    "type": "feature",
+    "status": "open",
+    "title": "Recurring bookings",
+    "description": "Teams want to book a room for their weekly meeting in one step instead of creating every booking manually. Max. 8 weeks in advance (MAX_ADVANCE_DAYS = 60).",
+    "assignee": null,
+    "component": "bookings"
+  },
+  {
+    "id": "WORK-418",
+    "type": "feature",
+    "status": "open",
+    "title": "Show the reason in release notifications",
+    "description": "The email 'Your booking was released' should explain the no-show policy and link to the check-in options.",
+    "assignee": "marco",
+    "component": "notifications"
+  },
+  {
+    "id": "WORK-421",
+    "type": "bug",
+    "status": "open",
+    "title": "Availability view ignores weekends",
+    "description": "GET /rooms/{room_id}/availability returns free slots for Saturday and Sunday although rooms cannot be booked on weekends.",
+    "assignee": null,
+    "component": "availability"
+  },
+  {
+    "id": "WORK-423",
+    "type": "task",
+    "status": "open",
+    "title": "Replace demo API keys in config.py",
+    "description": "The demo keys in roomie/config.py must only be used locally. Load the keys from the secret store in production and remove the fallback.",
+    "assignee": "dana",
+    "component": "auth"
+  }
+]
