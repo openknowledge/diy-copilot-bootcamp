@@ -3,21 +3,18 @@ name = "genai-kickstart"
 version = "0.1.0"
 description = "GenAI Workshop"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "chromadb>=1.5.5",
     "fastapi[standard]>=0.119.0",
     "google-adk>=1.5.0",
     "google-genai>=1.69.0",
-    "ipykernel==6.31",
-    "jupyter>=1.1.1",
     "langchain-text-splitters>=1.1.1",
     "litellm>=1.82.6",
     "lxml>=6.0.2",
     "mcp>=1.9.0",
     "ollama>=0.6.1",
-    "pandas>=3.0.2",
-    "pytest>=8.4.2",
+    "pandas>=2.2",
     "python-dotenv>=1.2.2",
     "requests>=2.32.5",
     "seaborn>=0.13.2",
@@ -27,9 +24,16 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Opt-in extras for the (Optional) reranker exercise in
-# day-03/solutions/00_rag_optimization. Not installed by default.
-# Enable with: uv sync --group reranker
+# Only needed to run the notebooks locally (installed by default with `uv sync`).
+# Colab brings its own Jupyter kernel, so setup/install_dependencies.py skips this group.
+dev = [
+    "ipykernel>=6.29",
+    "jupyter>=1.1.1",
+    "pytest>=8.4.2",
+]
+# Opt-in extras for the optional reranker (day-01/solutions/05_rag_optimization) and the
+# prompt injection classifier (day-02/solutions/00_guardrails). Preinstalled in Colab.
+# Enable locally with: uv sync --group reranker
 reranker = [
     "torch>=2.4",
     "transformers>=4.45",

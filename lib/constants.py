@@ -11,6 +11,8 @@ KNOWLEDGE_BASE_PATH = DATA_PATH / "knowledge_base"
 EVALUATION_DATA_PATH = DATA_PATH / "evaluation"
 # Export of the issue tracker of the team that owns the code base.
 TICKETS_PATH = DATA_PATH / "issue_tracker" / "tickets.json"
+# Cache of embedding vectors (checked into the repository, see lib/rag.py)
+EMBEDDING_CACHE_PATH = DATA_PATH / "cache" / "embeddings.sqlite"
 
 # Default models (Gemini API, free tier). Can be overridden via the environment
 # variables DEFAULT_GENERATION_MODEL / DEFAULT_EMBEDDING_MODEL.

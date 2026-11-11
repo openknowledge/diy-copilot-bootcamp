@@ -5,6 +5,7 @@ model) and the models are sometimes overloaded. Instead of failing, we wait
 and try again:
 
 * 429 rate limit: wait as long as the API asks for ("Please retry in 13.9s")
+* daily limit used up: switch to a fallback model (generation) or fail with a clear message
 * 503 overloaded / 500 / timeouts: wait with exponential backoff; if a generation
   model stays overloaded, switch to a fallback model (see lib.constants)
 """
@@ -34,6 +35,9 @@ RETRYABLE_ERRORS = (
 
 # Avoid printing long tracebacks and help links for errors we handle ourselves.
 litellm.suppress_debug_info = True
+# Drop parameters a model doesn't support (e.g. after switching to a fallback model)
+# instead of failing. Which parameters are supported can change between LiteLLM versions.
+litellm.drop_params = True
 
 
 def _requested_wait_seconds(error: Exception) -> float | None:
@@ -52,6 +56,15 @@ def _is_rate_limit(error: Exception) -> bool:
     # LiteLLM sometimes maps a 429 of the Gemini embedding API to a BadRequestError,
     # so we also look at the message.
     return isinstance(error, litellm.RateLimitError) or "RESOURCE_EXHAUSTED" in str(error)
+
+
+def _is_daily_limit(error: Exception) -> bool:
+    """The free tier also has limits per day (e.g. 1000 embedded texts). Waiting doesn't help."""
+    return _is_rate_limit(error) and ("PerDay" in str(error) or "per day" in str(error))
+
+
+class DailyQuotaExceededError(RuntimeError):
+    """Raised when the daily free tier limit of a model is used up."""
 
 
 def _is_retryable(error: Exception) -> bool:
@@ -81,6 +94,18 @@ def call_with_retry(function: Callable[..., T], *args, verbose: bool = True, **k
         except Exception as error:
             if not _is_retryable(error) or attempt == MAX_ATTEMPTS:
                 raise
+            if _is_daily_limit(error):
+                if fallbacks and _is_generation(function):
+                    # Every model has its own daily quota - switch to another one.
+                    kwargs["model"] = fallbacks.pop(0)
+                    if verbose:
+                        print(f"[retry] daily limit reached, switching to {kwargs['model']} ...")
+                    continue
+                raise DailyQuotaExceededError(
+                    f"The daily free tier limit for {kwargs.get('model')} is used up. It resets at midnight "
+                    "Pacific time (see https://ai.dev/rate-limit). Embeddings are cached, so texts that were "
+                    "embedded before don't count again."
+                ) from None
             overloaded = isinstance(error, litellm.ServiceUnavailableError)
             if overloaded and attempt >= FALLBACK_AFTER_ATTEMPTS and fallbacks and _is_generation(function):
                 # The model is still overloaded: switch to another model instead of waiting longer.

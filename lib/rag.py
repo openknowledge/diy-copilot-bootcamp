@@ -1,14 +1,17 @@
 """Building blocks for a RAG system over a knowledge base of Markdown documents
 (and, if needed, code files)."""
 
+import hashlib
+import os
+import sqlite3
 import uuid
-from functools import lru_cache
+from array import array
 from pathlib import Path
 
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 from litellm import embedding as litellm_embedding
 
-from lib.constants import CODEBASE_FILE_EXTENSIONS, KNOWLEDGE_BASE_FILE_EXTENSIONS
+from lib.constants import CODEBASE_FILE_EXTENSIONS, EMBEDDING_CACHE_PATH, KNOWLEDGE_BASE_FILE_EXTENSIONS
 from lib.evaluation import FetchedChunk, Metadata, do_top_k_fetching  # noqa: F401 (re-exported)
 from lib.retry import call_with_retry
 
@@ -107,18 +110,62 @@ def get_line_ranges(text: str, chunks: list[str]) -> list[tuple[int, int]]:
     return ranges
 
 
-@lru_cache(maxsize=4096)
-def _embed_cached(text: str, model: str, task_type: str | None) -> tuple[float, ...]:
-    kwargs = {"task_type": task_type} if task_type else {}
-    response = call_with_retry(litellm_embedding, model=model, input=text, **kwargs)
-    return tuple(response["data"][0]["embedding"])
+# --- Embedding cache ----------------------------------------------------------
+# The Gemini free tier allows only 1000 embedded texts per day (each text in a batch
+# counts). Re-ingesting the knowledge base (other chunk size, other task type, ...) and
+# repeated evaluations embed the same texts again and again. Therefore every embedding
+# is stored in a small SQLite file and reused - across notebooks and processes (e.g. the
+# MCP server). The file is part of the repository, so the embeddings of the workshop's
+# solutions don't cost any quota at all.
+#
+# Vectors are stored as binary float32 (differences to the API values < 1e-8, ~5x smaller than JSON).
+# Set the environment variable DIY_COPILOT_EMBEDDING_CACHE=0 to disable the cache.
+
+
+def _cache_enabled() -> bool:
+    return os.getenv("DIY_COPILOT_EMBEDDING_CACHE", "1") != "0"
+
+
+def _cache_key(text: str, model: str, task_type: str | None) -> str:
+    return hashlib.sha256(f"{model}|{task_type}|{text}".encode("utf-8")).hexdigest()
+
+
+def _cache_connection() -> sqlite3.Connection:
+    EMBEDDING_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(EMBEDDING_CACHE_PATH, timeout=30)
+    connection.execute("CREATE TABLE IF NOT EXISTS embeddings (key TEXT PRIMARY KEY, model TEXT, vector BLOB)")
+    return connection
+
+
+def _cache_get(keys: list[str]) -> dict[str, list[float]]:
+    if not _cache_enabled() or not keys:
+        return {}
+    with _cache_connection() as connection:
+        found = {}
+        for i in range(0, len(keys), 500):
+            part = keys[i : i + 500]
+            rows = connection.execute(
+                f"SELECT key, vector FROM embeddings WHERE key IN ({','.join('?' * len(part))})", part
+            ).fetchall()
+            found.update({key: array("f", blob).tolist() for key, blob in rows})
+        return found
+
+
+def _cache_put(items: dict[str, list[float]], model: str) -> None:
+    if not _cache_enabled() or not items:
+        return
+    with _cache_connection() as connection:
+        connection.executemany(
+            "INSERT OR REPLACE INTO embeddings (key, model, vector) VALUES (?, ?, ?)",
+            [(key, model, array("f", vector).tobytes()) for key, vector in items.items()],
+        )
 
 
 def do_embed(chunk: str, model: str, task_type: str | None = None) -> list[float]:
     """Embeds a single text and returns its embedding vector.
 
-    Results are cached in memory, so embedding the same question twice (e.g.
-    in repeated evaluation runs) does not cost an additional API request.
+    Results are cached, so embedding the same text twice (e.g. in repeated
+    evaluation runs) does not cost an additional API request.
 
     Parameters
     ----------
@@ -134,13 +181,16 @@ def do_embed(chunk: str, model: str, task_type: str | None = None) -> list[float
     list[float]
         The embedding vector.
     """
-    return list(_embed_cached(chunk, model, task_type))
+    return do_batch_embed([chunk], model, task_type=task_type)[0]
 
 
 def do_batch_embed(
     chunks: list[str], model: str, batch_size: int = 100, task_type: str | None = None
 ) -> list[list[float]]:
     """Embeds a list of chunks in batches and returns their embedding vectors.
+
+    Texts that were embedded before (same model and task type) are taken from the
+    cache; only new texts are sent to the API.
 
     Parameters
     ----------
@@ -158,13 +208,23 @@ def do_batch_embed(
     list[list[float]]
         List of embedding vectors, one per input chunk.
     """
+    keys = [_cache_key(chunk, model, task_type) for chunk in chunks]
+    cached = _cache_get(list(set(keys)))
+
+    missing = list(dict.fromkeys(chunk for chunk, key in zip(chunks, keys) if key not in cached))
     kwargs = {"task_type": task_type} if task_type else {}
-    all_embeddings = []
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i : i + batch_size]
+    for i in range(0, len(missing), batch_size):
+        batch = missing[i : i + batch_size]
         response = call_with_retry(litellm_embedding, model=model, input=batch, **kwargs)
-        all_embeddings.extend(data["embedding"] for data in response["data"])
-    return all_embeddings
+        # Round to float32 like the cache, so results are identical with and without cache hits
+        new = {
+            _cache_key(text, model, task_type): array("f", data["embedding"]).tolist()
+            for text, data in zip(batch, response["data"])
+        }
+        _cache_put(new, model)
+        cached.update(new)
+
+    return [cached[key] for key in keys]
 
 
 def augment(user_input: str, context: list[str]) -> str:

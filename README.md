@@ -69,3 +69,4 @@ GEMINI_API_KEY=<your key>
 | `data/knowledge_base/` | Internal knowledge for RAG: `domain/`, `engineering/`, `security/` |
 | `data/issue_tracker/` | Ticket export of the team that owns Roomie |
 | `data/evaluation/` | Evaluation dataset for the retrieval (+ script to rebuild it) |
+| `data/cache/` | Cache of embedding vectors, so the free tier limit of 1000 embeddings per day is not exceeded (see its README) |
