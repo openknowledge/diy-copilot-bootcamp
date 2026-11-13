@@ -16,3 +16,6 @@ _warm_*.ipynb
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Local handover notes for new working sessions
+HANDOVER.md
