@@ -11,6 +11,8 @@ KNOWLEDGE_BASE_PATH = DATA_PATH / "knowledge_base"
 EVALUATION_DATA_PATH = DATA_PATH / "evaluation"
 # Export of the issue tracker of the team that owns the code base.
 TICKETS_PATH = DATA_PATH / "issue_tracker" / "tickets.json"
+# Skills of the team (Agent Skills format): instructions the assistant loads on demand.
+SKILLS_PATH = DATA_PATH / "skills"
 # Cache of embedding vectors (checked into the repository, see lib/rag.py)
 EMBEDDING_CACHE_PATH = DATA_PATH / "cache" / "embeddings.sqlite"
 
