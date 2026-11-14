@@ -15,6 +15,8 @@ dependencies = [
     "mcp>=1.9.0",
     "ollama>=0.6.1",
     "pandas>=2.2",
+    # The coding agent (day-02/solutions/04_agents) runs the tests of the Roomie code base.
+    "pytest>=8.4.2",
     "python-dotenv>=1.2.2",
     "requests>=2.32.5",
     "seaborn>=0.13.2",
@@ -29,7 +31,6 @@ dependencies = [
 dev = [
     "ipykernel>=6.29",
     "jupyter>=1.1.1",
-    "pytest>=8.4.2",
 ]
 # Opt-in extras for the optional reranker (day-01/solutions/05_rag_optimization) and the
 # prompt injection classifier (day-02/solutions/00_guardrails). Preinstalled in Colab.
