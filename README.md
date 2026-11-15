@@ -33,7 +33,19 @@ internal knowledge.
 
 ### Day 2 – From assistant to agent
 
-Guarding, function calling and agents.
+| Notebook | Topic |
+|---|---|
+| `00_guardrails` | Guarding input, output and context: token limits, redaction, topic guard, LLM as a judge, indirect prompt injection |
+| `01_function_calling` | Tools under the hood: tool declarations, tool calls, the tool loop, human in the loop |
+| `02_mcp` | Model Context Protocol: JSON-RPC by hand, discovering and calling tools, writing an MCP server, resources and prompts |
+| `03_context_engineering` | Where the tokens go, prompt caching, progressive disclosure with skills, history condensing |
+| `04_agents` | A coding agent fixes a bug in Roomie: tools, `AGENTS.md`, agentic RAG, approval rules, Google ADK |
+
+### New to Python?
+
+`python_cheatsheet.ipynb` collects the Python basics needed in the workshop
+(strings, lists, dictionaries, loops, functions, JSON, Pydantic, reading error
+messages) with small examples you can run.
 
 ## Setup
 
@@ -64,9 +76,13 @@ GEMINI_API_KEY=<your key>
 | Path | Content |
 |---|---|
 | `day-01/`, `day-02/` | Workshop notebooks |
-| `lib/` | Shared helpers (completion, RAG, evaluation, environment) |
+| `python_cheatsheet.ipynb` | Python basics for the workshop |
+| `lib/` | Shared helpers (environment, retries, RAG, evaluation, MCP client, coding agent, ...) |
+| `setup/` | Installs the dependencies into the Colab environment (used by the setup cell of every notebook) |
 | `data/codebase/roomie/` | The fictional code base the assistant works on (runnable, with tests) |
-| `data/knowledge_base/` | Internal knowledge for RAG: `domain/`, `engineering/`, `security/` |
+| `data/knowledge_base/` | Internal knowledge for RAG: `domain/`, `engineering/`, `security/`, `hr/`, `it/` (outdated versions in `archive/` folders on purpose) |
 | `data/issue_tracker/` | Ticket export of the team that owns Roomie |
 | `data/evaluation/` | Evaluation dataset for the retrieval (+ script to rebuild it) |
+| `data/skills/` | Skills of the team that owns Roomie (Agent Skills format) |
 | `data/cache/` | Cache of embedding vectors, so the free tier limit of 1000 embeddings per day is not exceeded (see its README) |
+| `AGENTS.md` | Instructions for coding agents working on this repository |
