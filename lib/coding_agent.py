@@ -20,7 +20,9 @@ from pathlib import Path
 
 from litellm import completion
 
-from lib.constants import CODEBASE_PATH
+from lib.constants import CODEBASE_PATH, KNOWLEDGE_BASE_PATH
+from lib.evaluation import do_top_k_fetching
+from lib.rag import do_embed, do_ingestion, list_knowledge_base_files
 from lib.retry import call_with_retry
 
 WORKSPACE = Path(tempfile.gettempdir()) / "roomie-workspace"
@@ -122,7 +124,52 @@ def run_tests() -> str:
     return output if len(output) <= 3000 else "[... beginning of the output removed ...]\n" + output[-3000:]
 
 
-TOOLS = {"list_files": list_files, "read_file": read_file, "search_code": search_code, "edit_file": edit_file, "run_tests": run_tests}
+# --- The knowledge base (RAG from day 1, the tool from the function calling lesson) ---------------
+
+_knowledge_base = {"client": None, "embedding_model": None}
+
+
+def build_knowledge_base_index(embedding_model: str) -> None:
+    """Indexes the current documents of the knowledge base (without archive/), as in the function calling lesson.
+
+    The embeddings of the documents come from the embedding cache of the repository - no API requests.
+    """
+    from chromadb import EphemeralClient
+
+    documents = [f for f in list_knowledge_base_files(KNOWLEDGE_BASE_PATH) if "archive/" not in f]
+    client = EphemeralClient()
+    do_ingestion(file_names=documents, data_path=KNOWLEDGE_BASE_PATH, embedding_model=embedding_model,
+                 chromadb_client=client, add_file_header=True, collection_name="agent_knowledge_base")
+    _knowledge_base.update(client=client, embedding_model=embedding_model)
+
+
+def search_knowledge_base(query: str) -> str:
+    """Searches the company's internal knowledge base and returns the most relevant sections with their source.
+
+    The knowledge base contains the engineering guidelines (Python, API design, testing, git), the security and data
+    protection requirements (e.g. what must never be logged) and the business policies of the company. Use it to look
+    up the rules a change has to follow - rule ids look like SEC-04, API-07 or TEST-07.
+
+    Args:
+        query: What to search for, phrased like the wording of a guideline, e.g. 'what must never be logged'.
+    """
+    if _knowledge_base["client"] is None:
+        return "Error: the knowledge base is not available."
+    chunks = do_top_k_fetching(
+        do_embed(query, _knowledge_base["embedding_model"]), top_k=3,
+        chromadb_client=_knowledge_base["client"], collection_name="agent_knowledge_base",
+    )
+    return "\n\n---\n\n".join(f"Source: {chunk.metadata.origin}\n{chunk.chunk}" for chunk in chunks)
+
+
+TOOLS = {
+    "list_files": list_files,
+    "read_file": read_file,
+    "search_code": search_code,
+    "search_knowledge_base": search_knowledge_base,
+    "edit_file": edit_file,
+    "run_tests": run_tests,
+}
 
 
 def _declaration(name: str, description: str, parameters: dict[str, str], required: list[str]) -> dict:
@@ -137,6 +184,11 @@ TOOL_DECLARATIONS = [
                  {"path": "The path relative to the repository root, e.g. 'roomie/models.py'."}, ["path"]),
     _declaration("search_code", "Searches all files of the repository for a text and returns the matching lines as 'path:line: content'.",
                  {"text": "The exact text to search for, e.g. a function name or an error code."}, ["text"]),
+    _declaration("search_knowledge_base",
+                 "Searches the company's internal knowledge base (engineering guidelines, security and data protection "
+                 "requirements, business policies) and returns the most relevant sections with their source. Use it to look up "
+                 "the rules a change has to follow - rule ids look like SEC-04, API-07 or TEST-07.",
+                 {"query": "What to search for, phrased like the wording of a guideline, e.g. 'what must never be logged'."}, ["query"]),
     _declaration("edit_file", "Replaces a piece of text in a file. To add code, use the lines next to the new code as old_text and repeat them in new_text.",
                  {"path": "The path relative to the repository root.",
                   "old_text": "The exact text to replace. It must occur exactly once in the file.",
@@ -170,6 +222,21 @@ def show_diff() -> None:
             print(diff)
     if not changed:
         print("No changes.")
+
+
+def check_existing_tests_unchanged() -> None:
+    """Checks that the agent didn't remove or change lines of the existing tests (adding new lines is fine)."""
+    removed = []
+    for original in sorted((CODEBASE_PATH / "tests").rglob("*.py")):
+        relative = original.relative_to(CODEBASE_PATH)
+        copy = WORKSPACE / relative
+        after = copy.read_text().splitlines() if copy.exists() else []
+        for line in difflib.ndiff(original.read_text().splitlines(), after):
+            if line.startswith("- ") and line[2:].strip():
+                removed.append(f"{relative}: {line[2:].strip()}")
+    print(f"{'✅' if not removed else '❌'} No lines of existing tests removed or changed")
+    for line in removed:
+        print(f"   - {line}")
 
 
 # --- The agent loop -------------------------------------------------------------------------
@@ -292,12 +359,21 @@ def adk_approval_callback(approve: Callable[[str, dict], bool]):
     return before_tool_callback
 
 
-async def run_adk_agent(agent, task: str) -> str:
-    """Runs a Google ADK agent with a task in a new session and returns its final answer."""
+async def run_adk_agent(agent, task: str, max_llm_calls: int = 30) -> str:
+    """Runs a Google ADK agent with a task in a new session and returns its final answer.
+
+    Like max_steps in our own loop, max_llm_calls limits the number of model calls.
+    """
+    from google.adk.agents.run_config import RunConfig
     from google.adk.runners import InMemoryRunner
 
     runner = InMemoryRunner(agent=agent, app_name="diy-copilot")
-    events = await runner.run_debug(task, quiet=True)
+    try:
+        events = await runner.run_debug(task, quiet=True, run_config=RunConfig(max_llm_calls=max_llm_calls))
+    except Exception as error:  # ADK raises an error when the limit is reached
+        if "max" not in str(error).lower() and "limit" not in str(error).lower():
+            raise
+        return f"The agent did not finish the task within {max_llm_calls} model calls."
     final = [event for event in events if event.is_final_response() and event.content and event.content.parts]
     return "".join(part.text or "" for part in final[-1].content.parts) if final else ""
 
