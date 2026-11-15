@@ -1,7 +1,7 @@
 [project]
-name = "genai-kickstart"
+name = "diy-copilot"
 version = "0.1.0"
-description = "GenAI Workshop"
+description = "DIY Copilot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
