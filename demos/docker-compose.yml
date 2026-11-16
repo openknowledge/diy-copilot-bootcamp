@@ -1,0 +1,146 @@
+# Demos of the DIY Copilot workshop (see README.md).
+#
+#   docker compose up -d --build                      # Roomie only
+#   docker compose --profile chat up -d --build       # + OpenWebUI and copilot (levels 1-3)
+#   docker compose --profile mcp up -d --build        # + MCP servers for Claude Code (level 4)
+#   docker compose --profile gateway up -d --build    # + LiteLLM gateway with Postgres (level 5)
+name: diy-copilot-demos
+
+services:
+  # The application of Team Workplace: http://localhost:8000
+  roomie:
+    build: ./app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # RAG and guardrails behind an OpenAI compatible API: http://localhost:8200/v1
+  copilot:
+    build: ./copilot
+    image: diy-copilot-demos-copilot
+    profiles: ["chat"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      COPILOT_API_KEY: ${COPILOT_API_KEY:-sk-roomie-copilot-demo}
+    volumes:
+      # The knowledge base and the embedding cache of the workshop - read-only
+      - ../data/knowledge_base:/knowledge_base:ro
+      - ../data/cache/embeddings.sqlite:/seed/embeddings.sqlite:ro
+      # Own embedding cache (new embeddings, e.g. of questions)
+      - copilot-data:/data
+    ports:
+      - "8200:8200"
+    restart: unless-stopped
+
+  # Knowledge base search as MCP tool (Streamable HTTP): http://localhost:8100/mcp
+  # Same image and embedding cache as the copilot service.
+  mcp:
+    build: ./copilot
+    image: diy-copilot-demos-copilot
+    profiles: ["mcp", "gateway"]
+    command: ["python", "-m", "copilot.mcp_server"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MCP_HOST: 0.0.0.0
+    volumes:
+      - ../data/knowledge_base:/knowledge_base:ro
+      - ../data/cache/embeddings.sqlite:/seed/embeddings.sqlite:ro
+      - copilot-data:/data
+    ports:
+      - "8100:8100"
+    restart: unless-stopped
+
+  # Issue tracker of Team Workplace as MCP server (read-only): http://localhost:8101/mcp
+  tickets:
+    build: ./copilot
+    image: diy-copilot-demos-copilot
+    profiles: ["mcp", "gateway"]
+    command: ["python", "-m", "copilot.tickets_mcp_server"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      TICKETS_PATH: /tickets/tickets.json
+    volumes:
+      - ../data/issue_tracker:/tickets:ro
+    ports:
+      - "8101:8101"
+    restart: unless-stopped
+
+  # Chat UI: http://localhost:3000
+  openwebui:
+    # Pinned: OPENAI_API_CONFIGS (model filter below) needs a recent version, older
+    # local "main" images ignore it and list all Gemini models.
+    image: ghcr.io/open-webui/open-webui:${OPENWEBUI_TAG:-v0.13.3}
+    profiles: ["chat"]
+    depends_on: [copilot]
+    environment:
+      # Single user demo without login; configuration only from these variables
+      WEBUI_AUTH: "False"
+      WEBUI_NAME: "Roomie Copilot"
+      ENABLE_PERSISTENT_CONFIG: "False"
+      ENABLE_VERSION_UPDATE_CHECK: "False"
+      # Connection 0: Gemini directly (level 1), connection 1: our copilot service (levels 2 and 3)
+      ENABLE_OLLAMA_API: "False"
+      OPENAI_API_BASE_URLS: "https://generativelanguage.googleapis.com/v1beta/openai;http://copilot:8200/v1"
+      OPENAI_API_KEYS: "${GEMINI_API_KEY};${COPILOT_API_KEY:-sk-roomie-copilot-demo}"
+      OPENAI_API_CONFIGS: '{"0": {"enable": true, "model_ids": ["gemini-3.1-flash-lite"]}, "1": {"enable": true}}'
+      DEFAULT_MODELS: "gemini-3.1-flash-lite"
+      # Every one of these features would send additional requests to the selected model
+      # (and through our RAG and guard pipeline) - not with a free tier key.
+      ENABLE_TITLE_GENERATION: "False"
+      ENABLE_TAGS_GENERATION: "False"
+      ENABLE_FOLLOW_UP_GENERATION: "False"
+      ENABLE_AUTOCOMPLETE_GENERATION: "False"
+      ENABLE_RETRIEVAL_QUERY_GENERATION: "False"
+      ENABLE_SEARCH_QUERY_GENERATION: "False"
+      # OpenWebUI's own RAG is not used - ours is
+      BYPASS_EMBEDDING_AND_RETRIEVAL: "True"
+    volumes:
+      - openwebui-data:/app/backend/data
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+
+  # MCP gateway / registry: http://localhost:4000 (Admin UI: /ui, user admin, password = master key)
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:${LITELLM_TAG:-v1.109.1}
+    profiles: ["gateway"]
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-demo-master-key}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-litellm-demo-salt-key}
+      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
+      # MCP servers added in the Admin UI are stored in the database
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+      tickets:
+        condition: service_started
+    restart: unless-stopped
+
+  litellm-db:
+    image: postgres:16
+    profiles: ["gateway"]
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - litellm-db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  litellm-db:
+  copilot-data:
+  openwebui-data:

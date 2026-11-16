@@ -1,0 +1,2 @@
+# Local embedding cache of the copilot service (outside of Docker)
+copilot/.cache/

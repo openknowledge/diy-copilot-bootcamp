@@ -1,0 +1,18 @@
+# LiteLLM proxy as MCP gateway (level 5).
+#
+# The platform team registers MCP servers here (or in the Admin UI). Developers don't
+# configure servers themselves: Claude Code only gets the gateway URL and a key, and the
+# key decides which servers / tools a team may use.
+
+mcp_servers:
+  knowledge_base:
+    url: "http://mcp:8100/mcp"   # the MCP server of level 4, inside the Docker network
+    transport: "http"
+    description: "Company knowledge base: business policies, engineering guidelines, security rules"
+  issue_tracker:
+    url: "http://tickets:8101/mcp"
+    transport: "http"
+    description: "Tickets of Team Workplace (read-only)"
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

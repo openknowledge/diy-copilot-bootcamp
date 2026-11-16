@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roomie – Meeting rooms Berlin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">R</span>
+      <div>
+        <h1>Roomie</h1>
+        <p>Meeting rooms · Berlin office</p>
+      </div>
+    </div>
+    <label class="user">
+      Signed in as
+      <select id="user"></select>
+    </label>
+  </header>
+
+  <div id="message" class="message hidden"></div>
+
+  <main>
+    <section class="card wide">
+      <div class="card-head">
+        <h2>Availability</h2>
+        <div class="day-nav">
+          <button id="prev-day" title="Previous day">◀</button>
+          <input type="date" id="day">
+          <button id="next-day" title="Next day">▶</button>
+          <span id="weekday" class="muted"></span>
+        </div>
+      </div>
+      <div id="timeline" class="timeline"></div>
+      <p class="muted small">Green = free (office time, Europe/Berlin). Click a free slot to prefill the booking form.</p>
+    </section>
+
+    <section class="card">
+      <h2>Book a room</h2>
+      <form id="booking-form">
+        <label>Room <select name="room_id" id="room-select" required></select></label>
+        <label>Title <input name="title" required maxlength="120" placeholder="e.g. Sprint planning"></label>
+        <div class="row">
+          <label>Day <input type="date" name="day" required></label>
+          <label>From <input type="time" name="start" step="900" required></label>
+          <label>To <input type="time" name="end" step="900" required></label>
+        </div>
+        <label>Attendees <input type="number" name="attendees" min="1" value="2" required></label>
+        <button type="submit" class="primary">Book</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Find a free room</h2>
+      <form id="search-form">
+        <div class="row">
+          <label>Day <input type="date" name="day" required></label>
+          <label>From <input type="time" name="start" step="900" value="10:00" required></label>
+          <label>To <input type="time" name="end" step="900" value="11:00" required></label>
+        </div>
+        <div class="row">
+          <label>Attendees <input type="number" name="attendees" min="1" value="4" required></label>
+          <label class="checkbox"><input type="checkbox" name="needs_video"> Video conferencing</label>
+        </div>
+        <button type="submit">Search</button>
+      </form>
+      <ul id="search-results" class="results"></ul>
+    </section>
+
+    <section class="card wide">
+      <div class="card-head">
+        <h2>My bookings</h2>
+        <button id="release" class="admin-only" title="Release bookings without check-in (facility admins only)">Release no-shows</button>
+      </div>
+      <table>
+        <thead><tr><th>Room</th><th>Title</th><th>When</th><th>Attendees</th><th>Status</th><th></th></tr></thead>
+        <tbody id="bookings"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="muted small">
+    Roomie <span id="version"></span> · Team Workplace · <a href="/docs">API docs</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
