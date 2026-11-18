@@ -19,6 +19,15 @@ if [[ "$LEVEL" != "4" && "$LEVEL" != "5" ]]; then
   exit 1
 fi
 
+# Level 5: get a key of team-workplace from the gateway first - if the gateway is not
+# running, stop before the existing workspace is touched.
+if [[ "$LEVEL" == "5" ]]; then
+  TEAM_KEY="$("$DEMOS_DIR/litellm/create-team-key.sh")" || {
+    echo "Could not create a key - is the gateway running? (docker compose --profile gateway up -d)" >&2
+    exit 1
+  }
+fi
+
 # Only ever delete directories this script created
 if [[ -e "$TARGET" ]]; then
   if [[ ! -f "$TARGET/$MARKER" ]]; then
@@ -75,10 +84,10 @@ else
 EOF
 fi
 
-# Level 5: a key of team-workplace from the gateway. .mcp.json only references the
-# environment variable - the key itself is not committed.
+# Level 5: store the key. .mcp.json only references the environment variable - the key
+# itself is not committed.
 if [[ "$LEVEL" == "5" ]]; then
-  "$DEMOS_DIR/litellm/create-team-key.sh" > "$TARGET/.litellm-key"
+  echo "$TEAM_KEY" > "$TARGET/.litellm-key"
 fi
 
 cd "$TARGET"

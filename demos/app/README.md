@@ -54,7 +54,7 @@ uv run pytest
 ```
 
 All tests use a frozen clock (Monday, 2 March 2026, 09:00 Berlin time), see
-`tests/conftest.py`. Never use `datetime.now()` in tests.
+`tests/conftest.py`.
 
 ## Project layout
 

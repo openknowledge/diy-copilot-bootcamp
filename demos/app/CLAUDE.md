@@ -15,14 +15,14 @@ ROOMIE_DEMO_DATA=1 uv run uvicorn roomie.main:app --reload   # run locally (UI o
 
 - Follow the layer rules in `docs/architecture.md`: routers → services → repository.
   Services raise `RoomieError` subclasses, never `HTTPException`.
-- All business rules and settings live in `roomie/config.py` – never hard-code them.
-- Error codes are stable (`docs/error_codes.md`): add new codes, never change existing ones.
-- Tests use the frozen clock from `tests/conftest.py`. Never use `datetime.now()` in tests.
-  Do not delete or weaken existing tests; add new tests for every bug fix.
+- Business rules and settings of Roomie live in `roomie/config.py`.
+- The error codes of Roomie are listed in `docs/error_codes.md`.
+- Tests use the frozen clock from `tests/conftest.py`. Do not delete or weaken existing tests.
 
 ## Company rules
 
 Our company has binding rules for engineering, security and data protection
 (rule ids like `API-07`, `PY-03`, `TEST-07`, `SEC-04`, `DP-01`). They are not in this
-repository. If the tool `search_knowledge_base` is available, look up the relevant
-rules before you change code, and mention the rule ids in your summary.
+repository. If a tool for searching the company knowledge base is available (e.g.
+`search_knowledge_base`), look up the relevant rules before you change code, and mention
+the rule ids in your summary.

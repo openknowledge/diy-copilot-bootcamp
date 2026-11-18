@@ -197,6 +197,7 @@ Claude Code ──x-litellm-api-key──▶ LiteLLM :4000/mcp/ ─┬─▶ mcp
 | Team and key with MCP permissions | Admin UI → *Teams*, *Virtual Keys* |
 | Every tool call with key, tool and status | Admin UI → *Logs* |
 | Add a server without touching any developer machine | Admin UI → *MCP Servers* → *Add New MCP Server* (stored in Postgres), then grant it to the team |
+| Guardrails before and after tool calls (not configured in this demo) | Guardrails in `litellm/config.yaml` with `mode: pre_mcp_call` (checks the tool arguments, e.g. mask secrets) or `mode: post_mcp_call` (checks the tool result before the model sees it, e.g. prompt injection), e.g. with the built-in `litellm_content_filter` and `default_on: true`. Blocked calls reach Claude Code as tool errors. See <https://docs.litellm.ai/docs/mcp_guardrail> |
 | Different teams, different tools | A key of another team that may only use the knowledge base (see below): `/mcp` shows no ticket tools |
 | Access denied | Start Claude Code with a key without MCP permission: `/mcp` shows the error *"The key has no MCP servers granted"* (HTTP 403); invalid keys get 401 |
 
@@ -216,3 +217,12 @@ curl -s -X POST localhost:4000/key/generate -H "Authorization: Bearer sk-litellm
 
 Reset the gateway (teams, keys, logs, servers added in the UI):
 `docker compose --profile gateway down && docker volume rm diy-copilot-demos_litellm-db`.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `failed to set up container networking: network … not found` (e.g. after restarting Docker Desktop) | The containers still point to the old network. Recreate them – volumes (keys, caches) are kept: `docker compose --profile chat --profile gateway up -d --force-recreate` |
+| OpenWebUI shows no `roomie-*` models | `docker compose ps` – is `copilot` running? Then reload the page. |
+| `setup-workspace.sh 5` fails | The gateway must be running: `docker compose --profile gateway up -d`. The existing workspace is not touched. |
+| Claude Code: MCP server not connected | `/mcp` in Claude Code; `docker compose logs mcp tickets litellm` |

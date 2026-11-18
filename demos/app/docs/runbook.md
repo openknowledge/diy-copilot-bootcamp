@@ -27,14 +27,6 @@ nobody can check in and the booking gets released.
 The scheduler is enabled on more than one replica. Check the deployment for
 `ROOMIE_RUN_SCHEDULER=1` – it must be set on exactly one replica.
 
-### `500 Internal Server Error` when creating a booking
-
-Known bug (Jira `WORK-412`): if a client sends `start`/`end` without a
-timezone offset (e.g. `2026-03-03T10:00:00`), comparing it with the
-timezone-aware "now" raises a `TypeError` and the API answers with 500
-instead of a proper 422. Ask the client team to always send an offset
-(e.g. `+01:00`) or `Z`. See ADR-0004.
-
 ### Many `ROOM-401-AUTH` errors
 
 Usually an expired API key of the Slack bot. Rotate the key in the secret

@@ -1,9 +1,9 @@
 # Error codes
 
-Every domain error has a stable code `ROOM-<status>-<reason>`. Clients (web
-app, Slack bot, door displays) show localized messages based on the code, so
-**codes must never be renamed or reused**. Add a new code instead and announce
-it in `#team-workplace`.
+Every domain error of Roomie has a code `ROOM-<status>-<reason>`. Clients (web
+app, Slack bot, door displays) show localized messages based on the code. The
+format and the rules for changing codes are defined in the company API
+guidelines. Announce new codes in `#team-workplace`.
 
 | Code | HTTP | Exception | When |
 |---|---|---|---|

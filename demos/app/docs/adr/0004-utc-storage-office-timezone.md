@@ -11,7 +11,7 @@ rejected for months until somebody noticed.
 
 ## Decision
 
-- All datetimes in the API are timezone-aware ISO 8601 strings.
+- Datetimes in the API follow the company API guidelines.
 - Bookings are converted to UTC before they are stored.
 - All checks that depend on the local day – business days, business hours
   (07:00–20:00), "same day" – and the availability view use

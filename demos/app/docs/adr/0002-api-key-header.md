@@ -22,5 +22,5 @@ The web app exchanges the SSO session for a short-lived user key at login.
 ## Consequences
 
 - `Authorization: Bearer ...` does **not** work and returns `ROOM-401-AUTH`.
-- Keys must never be logged (company security requirement SEC-04).
+- Keys are secrets: the company security requirements apply.
 - Key rotation is done in the secret store, see the runbook.

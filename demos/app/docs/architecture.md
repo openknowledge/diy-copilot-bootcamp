@@ -48,7 +48,7 @@ Only `confirmed` and `checked_in` bookings block a room.
 
 ## Time handling
 
-- Clients send timezone-aware ISO 8601 timestamps.
+- Timestamps in the API follow the company API guidelines.
 - Bookings are stored in UTC.
 - Business hours, weekdays and the availability view are evaluated in the
   office timezone `Europe/Berlin`.
