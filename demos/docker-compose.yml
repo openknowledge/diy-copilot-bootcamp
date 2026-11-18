@@ -4,6 +4,8 @@
 #   docker compose --profile chat up -d --build       # + OpenWebUI and copilot (levels 1-3)
 #   docker compose --profile mcp up -d --build        # + MCP servers for Claude Code (level 4)
 #   docker compose --profile gateway up -d --build    # + LiteLLM gateway with Postgres (level 5)
+#   docker compose --profile eval up -d               # + Langfuse (evaluation demo)
+#   docker compose --profile eval run --rm evaluation # run the retrieval experiments
 name: diy-copilot-demos
 
 services:
@@ -140,7 +142,168 @@ services:
       - litellm-db:/var/lib/postgresql/data
     restart: unless-stopped
 
+  # --- Evaluation demo: Langfuse (self-hosted, http://localhost:3100) --------------------------
+  # Based on https://github.com/langfuse/langfuse/blob/main/docker-compose.yml, reduced to what the
+  # demo needs. Only the web UI is published, so nothing collides with other local stacks.
+  # Login: demo@example.com / roomie-demo (created on first start, see LANGFUSE_INIT_*).
+
+  # Runs the retrieval experiments and sends them to Langfuse (one-shot container)
+  evaluation:
+    build: ./copilot
+    image: diy-copilot-demos-copilot
+    profiles: ["eval"]
+    command: ["python", "-m", "copilot.evaluation"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: pk-lf-roomie-demo
+      LANGFUSE_SECRET_KEY: sk-lf-roomie-demo
+      EVALUATION_DATASET_PATH: /evaluation/evaluation_dataset.csv
+    volumes:
+      - ../data/knowledge_base:/knowledge_base:ro
+      - ../data/cache/embeddings.sqlite:/seed/embeddings.sqlite:ro
+      - ../data/evaluation:/evaluation:ro
+      - copilot-data:/data
+    depends_on: [langfuse-web]
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_TAG:-4.82.0}
+    profiles: ["eval"]
+    depends_on: &langfuse-depends-on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+    environment: &langfuse-env
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: roomie-demo-nextauth-secret
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      SALT: roomie-demo-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: myredissecret
+      # Organisation, project, API keys and user are created on the first start
+      LANGFUSE_INIT_ORG_ID: team-workplace
+      LANGFUSE_INIT_ORG_NAME: Team Workplace
+      LANGFUSE_INIT_PROJECT_ID: roomie-copilot
+      LANGFUSE_INIT_PROJECT_NAME: Roomie Copilot
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-roomie-demo
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-roomie-demo
+      LANGFUSE_INIT_USER_EMAIL: demo@example.com
+      LANGFUSE_INIT_USER_NAME: Demo
+      LANGFUSE_INIT_USER_PASSWORD: roomie-demo
+    ports:
+      - "3100:3000"
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:${LANGFUSE_TAG:-4.82.0}
+    profiles: ["eval"]
+    depends_on: *langfuse-depends-on
+    environment: *langfuse-env
+    restart: unless-stopped
+
+  langfuse-postgres:
+    image: postgres:17
+    profiles: ["eval"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - langfuse-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:26.3.62.3
+    profiles: ["eval"]
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    volumes:
+      - langfuse-clickhouse:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    restart: unless-stopped
+
+  langfuse-minio:
+    image: cgr.dev/chainguard/minio
+    profiles: ["eval"]
+    entrypoint: sh
+    # Creates the bucket before starting the service
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+    volumes:
+      - langfuse-minio:/data
+    restart: unless-stopped
+
+  langfuse-redis:
+    image: redis:7
+    profiles: ["eval"]
+    command: --requirepass myredissecret --maxmemory-policy noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - langfuse-redis:/data
+    restart: unless-stopped
+
 volumes:
   litellm-db:
   copilot-data:
   openwebui-data:
+  langfuse-postgres:
+  langfuse-clickhouse:
+  langfuse-clickhouse-logs:
+  langfuse-minio:
+  langfuse-redis:

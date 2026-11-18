@@ -67,16 +67,22 @@ def _line_ranges(text: str, chunks: list[str]) -> list[tuple[int, int]]:
     return ranges
 
 
-def load_chunks(root: Path = settings.KNOWLEDGE_BASE_PATH) -> list[Chunk]:
+def load_chunks(
+    root: Path = settings.KNOWLEDGE_BASE_PATH,
+    chunk_size: int = settings.CHUNK_SIZE,
+    chunk_overlap: int = settings.CHUNK_OVERLAP,
+    file_header: bool = True,
+) -> list[Chunk]:
     splitter = RecursiveCharacterTextSplitter.from_language(
-        language=Language.MARKDOWN, chunk_size=settings.CHUNK_SIZE, chunk_overlap=settings.CHUNK_OVERLAP
+        language=Language.MARKDOWN, chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
     chunks = []
     for source in list_documents(root):
         content = (root / source).read_text(encoding="utf-8")
         parts = splitter.split_text(content)
         for part, (start, end) in zip(parts, _line_ranges(content, parts)):
-            chunks.append(Chunk(source=source, start_line=start, end_line=end, text=f"# File: {source}\n{part}"))
+            text = f"# File: {source}\n{part}" if file_header else part
+            chunks.append(Chunk(source=source, start_line=start, end_line=end, text=text))
     return chunks
 
 
@@ -147,7 +153,21 @@ def _normalize(matrix: np.ndarray) -> np.ndarray:
 
 
 class KnowledgeBaseIndex:
-    def __init__(self) -> None:
+    """In-memory vector index. The parameters are only changed by the evaluation (variants)."""
+
+    def __init__(
+        self,
+        chunk_size: int = settings.CHUNK_SIZE,
+        chunk_overlap: int = settings.CHUNK_OVERLAP,
+        file_header: bool = True,
+        document_task_type: str | None = None,
+        query_task_type: str | None = None,
+    ) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.file_header = file_header
+        self.document_task_type = document_task_type
+        self.query_task_type = query_task_type
         self._lock = threading.Lock()
         self.chunks: list[Chunk] = []
         self._matrix: np.ndarray | None = None
@@ -157,8 +177,8 @@ class KnowledgeBaseIndex:
         with self._lock:
             if self._matrix is not None:
                 return
-            chunks = load_chunks()
-            vectors = embed_cached([chunk.text for chunk in chunks])
+            chunks = load_chunks(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap, file_header=self.file_header)
+            vectors = embed_cached([chunk.text for chunk in chunks], task_type=self.document_task_type)
             self.chunks, self._matrix = chunks, _normalize(np.array(vectors, dtype=np.float32))
             documents = len({chunk.source for chunk in chunks})
             logger.info("knowledge base index ready: %d chunks from %d documents", len(chunks), documents)
@@ -166,7 +186,7 @@ class KnowledgeBaseIndex:
     def search(self, query: str, top_k: int = settings.TOP_K) -> list[SearchResult]:
         """Returns the top_k chunks most similar to the query, best first."""
         self.build()
-        query_vector = _normalize(np.array(embed_cached([query])[0], dtype=np.float32))
+        query_vector = _normalize(np.array(embed_cached([query], task_type=self.query_task_type)[0], dtype=np.float32))
         scores = self._matrix @ query_vector
         best = np.argsort(-scores)[:top_k]
         return [SearchResult(chunk=self.chunks[i], score=float(scores[i])) for i in best]

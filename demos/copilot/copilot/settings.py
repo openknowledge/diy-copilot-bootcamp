@@ -33,6 +33,11 @@ SEED_CACHE_PATH = Path(_env("SEED_CACHE_PATH", str(_REPO_ROOT / "data" / "cache"
 # Ticket export of the issue tracker (MCP server "issue-tracker"). Only read.
 TICKETS_PATH = Path(_env("TICKETS_PATH", str(_REPO_ROOT / "data" / "issue_tracker" / "tickets.json")))
 
+# Evaluation dataset of the workshop (question, ground truth origin "file:start-end", answer, difficulty). Only read.
+EVALUATION_DATASET_PATH = Path(
+    _env("EVALUATION_DATASET_PATH", str(_REPO_ROOT / "data" / "evaluation" / "evaluation_dataset.csv"))
+)
+
 # Retrieval
 CHUNK_SIZE = int(_env("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(_env("CHUNK_OVERLAP", "100"))

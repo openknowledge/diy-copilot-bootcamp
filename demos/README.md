@@ -218,6 +218,43 @@ curl -s -X POST localhost:4000/key/generate -H "Authorization: Bearer sk-litellm
 Reset the gateway (teams, keys, logs, servers added in the UI):
 `docker compose --profile gateway down && docker volume rm diy-copilot-demos_litellm-db`.
 
+## Evaluation: retrieval experiments in Langfuse
+
+The evaluation dataset of the workshop (`data/evaluation/evaluation_dataset.csv`) is loaded into
+Langfuse as a dataset. Every retrieval variant runs as an experiment over it, every question gets
+the metrics of the workshop as scores (hit rate, reciprocal rank, precision).
+
+```bash
+docker compose --profile eval up -d                     # Langfuse on http://localhost:3100
+docker compose --profile eval run --rm evaluation       # run all variants
+docker compose --profile eval run --rm evaluation python -m copilot.evaluation baseline top-k-8   # selected variants
+```
+
+Login: `demo@example.com` / `roomie-demo`.
+
+| Variant | Change compared to the baseline |
+|---|---|
+| `baseline` | like the `roomie-rag` model: chunks 1000/100, `# File:` header, top 4 |
+| `no-file-header` | without the file header in the chunks |
+| `task-types` | Gemini task types `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` |
+| `chunk-500` | smaller chunks: 500 characters, 50 overlap |
+| `top-k-8` | twice as many chunks |
+
+Only embeddings are used (no LLM requests). They are cached, so only the first run of a new
+variant costs free tier quota.
+
+### Things to show
+
+| What | Where in Langfuse |
+|---|---|
+| The dataset with expected locations and difficulty | *Datasets* → `roomie-retrieval` → items |
+| Variants side by side | *Datasets* → `roomie-retrieval` → experiments – select several and compare the average scores |
+| Easy vs. hard questions | run scores `hit_rate_easy`, `hit_rate_hard`, … |
+| Why a question fails | open a question with `hit_rate` 0: the trace shows the retrieved chunks, the score comment the expected location |
+| Regression test after a change | change a variant in `copilot/copilot/evaluation.py` (`VARIANTS`), run again, compare with the previous run |
+
+Reset Langfuse: `docker compose --profile eval down` and remove the volumes `diy-copilot-demos_langfuse-*`.
+
 ## Troubleshooting
 
 | Problem | Fix |

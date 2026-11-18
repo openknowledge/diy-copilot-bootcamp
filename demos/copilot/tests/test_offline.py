@@ -89,3 +89,31 @@ def test_tickets_mcp_server():
     assert "does not exist" in get_ticket("WORK-999")
     assert "WORK-421" in list_tickets(status="open", component="availability")
     assert "WORK-412" not in list_tickets(status="done")
+
+
+def test_evaluation_metrics_match_the_workshop():
+    from copilot.evaluation import retrieval_scores
+
+    expected = {"origins": ["domain/room-booking-policy.md:28-33"], "answer": "4 hours"}
+    retrieved = [
+        {"source": "domain/glossary.md", "start_line": 1, "end_line": 20},
+        {"source": "domain/room-booking-policy.md", "start_line": 20, "end_line": 30},  # overlaps 28-33
+        {"source": "domain/room-booking-policy.md", "start_line": 34, "end_line": 50},  # directly after
+        {"source": "domain/room-booking-policy.md", "start_line": 1, "end_line": 27},   # directly before
+    ]
+    scores = {e.name: e.value for e in retrieval_scores(input={}, output=retrieved, expected_output=expected)}
+    assert scores == {"hit_rate": 1.0, "reciprocal_rank": 0.5, "precision": 0.25}
+
+    misses = {e.name: e.value for e in retrieval_scores(input={}, output=retrieved[:1], expected_output=expected)}
+    assert misses == {"hit_rate": 0.0, "reciprocal_rank": 0.0, "precision": 0.0}
+
+
+def test_evaluation_dataset_and_variants():
+    from copilot.evaluation import VARIANTS, load_dataset_rows, parse_origin
+
+    rows = load_dataset_rows()
+    assert len(rows) == 62 and {row["difficulty"] for row in rows} == {"easy", "hard"}
+    for row in rows:
+        for origin in row["ground_truth_origin"].split(";"):
+            assert parse_origin(origin)[1] >= 1
+    assert "baseline" in VARIANTS
